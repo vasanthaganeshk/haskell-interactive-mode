@@ -143,58 +143,8 @@
 (require 'haskell-lexeme)
 (require 'haskell-sort-imports)
 (require 'haskell-string)
-(require 'haskell-indentation)
 (require 'haskell-font-lock)
 (require 'haskell-cabal)
-
-;; All functions/variables start with `(literate-)haskell-'.
-
-;; Version of mode.
-(defconst haskell-version "16.2-git"
-  "The release version of `haskell-mode'.")
-
-;;;###autoload
-(defun haskell-version (&optional here)
-  "Show the `haskell-mode` version in the echo area.
-With prefix argument HERE, insert it at point."
-  (interactive "P")
-  (let* ((haskell-mode-dir (ignore-errors
-                             (file-name-directory (or (locate-library "haskell-mode") ""))))
-         (version (format "haskell-mode version %s (%s)"
-                           haskell-version
-                           haskell-mode-dir)))
-    (if here
-        (insert version)
-      (message "%s" version))))
-
-;;;###autoload
-(defun haskell-mode-view-news ()
-  "Display information on recent changes to haskell-mode."
-  (interactive)
-  (with-current-buffer (find-file-read-only (expand-file-name "NEWS" haskell-mode-pkg-base-dir))
-    (goto-char (point-min))
-    (outline-hide-sublevels 1)
-    (outline-next-visible-heading 1)
-    (outline-show-subtree)))
-
-;; Are we looking at a literate script?
-(defvar-local haskell-literate nil
-  "If not nil, the current buffer contains a literate Haskell script.
-Possible values are: `bird' and `tex', for Bird-style and LaTeX-style
-literate scripts respectively.  Set by `haskell-mode' and
-`literate-haskell-mode'.  For an ambiguous literate buffer -- i.e. does
-not contain either \"\\begin{code}\" or \"\\end{code}\" on a line on
-its own, nor does it contain \">\" at the start of a line -- the value
-of `haskell-literate-default' is used.")
-(put 'haskell-literate 'safe-local-variable 'symbolp)
-
-;; Default literate style for ambiguous literate buffers.
-(defcustom haskell-literate-default 'bird
-  "Default value for `haskell-literate'.
-Used if the style of a literate buffer is ambiguous.  This variable should
-be set to the preferred literate style."
-  :group 'haskell
-  :type '(choice (const bird) (const tex) (const nil)))
 
 (defvar haskell-mode-map
   (let ((map (make-sparse-keymap)))
@@ -207,7 +157,6 @@ be set to the preferred literate style."
     (define-key map (kbd "C-c C-v") 'haskell-mode-enable-process-minor-mode)
     (define-key map (kbd "C-c C-t") 'haskell-mode-enable-process-minor-mode)
     (define-key map (kbd "C-c C-i") 'haskell-mode-enable-process-minor-mode)
-    (define-key map (kbd "C-c C-s") 'haskell-mode-toggle-scc-at-point)
     map)
   "Keymap used in `haskell-mode'.")
 
@@ -728,12 +677,6 @@ Returns beginning position of qualified part or nil if no qualified part found."
         (setq pos (point)))
       pos)))
 
-(defun haskell-delete-indentation (&optional arg)
-  "Like `delete-indentation' but ignoring Bird-style \">\"."
-  (interactive "*P")
-  (let ((fill-prefix (or fill-prefix (if (eq haskell-literate 'bird) ">"))))
-    (delete-indentation arg)))
-
 (defvar eldoc-print-current-symbol-info-function)
 
 ;; The main mode functions
@@ -751,14 +694,6 @@ Use `haskell-version' to find out what version of Haskell mode you are
 currently using.
 
 Additional Haskell mode modules can be hooked in via `haskell-mode-hook'.
-
-Indentation modes:
-
-    `haskell-indentation-mode', Kristof Bastiaensen, Gergely Risko
-      Intelligent semi-automatic indentation Mk2
-
-    `haskell-indent-mode', Guy Lapalme
-      Intelligent semi-automatic indentation.
 
 Interaction modes:
 
@@ -805,7 +740,6 @@ Minor modes that work well with `haskell-mode':
   (setq-local comment-start-skip "[-{]-[ \t]*")
   (setq-local comment-end "")
   (setq-local comment-end-skip "[ \t]*\\(-}\\|\\s>\\)")
-  (setq-local forward-sexp-function #'haskell-forward-sexp)
   (setq-local parse-sexp-ignore-comments nil)
   (setq-local syntax-propertize-function #'haskell-syntax-propertize)
 
@@ -929,50 +863,6 @@ applies to `haskell-indentation-mode' and `haskell-indent-mode'."
 ;;           (skip-syntax-forward "^w")
 ;;           (make-string (- (point) line-start) ?\s))))))
 
-;;;###autoload
-(defun haskell-forward-sexp (&optional arg)
-  "Haskell specific version of `forward-sexp'.
-
-Move forward across one balanced expression (sexp).  With ARG, do
-it that many times.  Negative arg -N means move backward across N
-balanced expressions.  This command assumes point is not in a
-string or comment.
-
-If unable to move over a sexp, signal `scan-error' with three
-arguments: a message, the start of the obstacle (a parenthesis or
-list marker of some kind), and end of the obstacle."
-  (interactive "^p")
-  (or arg (setq arg 1))
-  (if (< arg 0)
-      (while (< arg 0)
-        (skip-syntax-backward "->")
-        ;; Navigate backwards using plain `backward-sexp', assume that it
-        ;; skipped over at least one Haskell expression, and jump forward until
-        ;; last possible point before the starting position. If applicable,
-        ;; `scan-error' is signalled by `backward-sexp'.
-        (let ((end (point))
-              (forward-sexp-function nil))
-          (backward-sexp)
-          (let ((cur (point)))
-            (while (< (point) end)
-              (setf cur (point))
-              (haskell-forward-sexp)
-              (skip-syntax-forward "->"))
-            (goto-char cur)))
-        (setf arg (1+ arg)))
-    (save-match-data
-      (while (> arg 0)
-        (when (haskell-lexeme-looking-at-token)
-          (cond ((member (match-string 0) (list "(" "[" "{"))
-                 (goto-char (or (scan-sexps (point) 1) (buffer-end 1))))
-                ((member (match-string 0) (list ")" "]" "}"))
-                 (signal 'scan-error (list "Containing expression ends prematurely."
-                                           (match-beginning 0)
-                                           (match-end 0))))
-                (t (goto-char (match-end 0)))))
-        (setf arg (1- arg))))))
-
-
 
 ;;;###autoload
 (define-derived-mode literate-haskell-mode haskell-mode "LitHaskell"
@@ -991,20 +881,6 @@ list marker of some kind), and end of the obstacle."
       (setq-local fill-paragraph-handle-comment nil))
   (setq-local mode-line-process '("/" (:eval (symbol-name haskell-literate)))))
 
-;;;###autoload
-(add-to-list 'auto-mode-alist        '("\\.[gh]s\\'" . haskell-mode))
-;;;###autoload
-(add-to-list 'auto-mode-alist        '("\\.l[gh]s\\'" . literate-haskell-mode))
-;;;###autoload
-(add-to-list 'auto-mode-alist        '("\\.hsc\\'" . haskell-mode))
-;;;###autoload
-(add-to-list 'interpreter-mode-alist '("runghc" . haskell-mode))
-;;;###autoload
-(add-to-list 'interpreter-mode-alist '("runhaskell" . haskell-mode))
-;;;###autoload
-(add-to-list 'completion-ignored-extensions ".hi")
-
-
 (defcustom haskell-check-command "hlint"
   "*Command used to check a Haskell file."
   :group 'haskell
@@ -1068,72 +944,6 @@ To be added to `flymake-init-create-temp-buffer-copy'."
   "Function that will be called before buffer's saving."
   (when haskell-stylish-on-save
     (ignore-errors (haskell-mode-stylish-buffer))))
-
-;; From Bryan O'Sullivan's blog:
-;; http://www.serpentine.com/blog/2007/10/09/using-emacs-to-insert-scc-annotations-in-haskell-code/
-(defun haskell-mode-try-insert-scc-at-point ()
-  "Try to insert an SCC annotation at point.  Return true if
-successful, nil otherwise."
-  (if (or (looking-at "\\b\\|[ \t]\\|$")
-          ;; Allow SCC if point is on a non-letter with whitespace to the left
-          (and (not (bolp))
-               (save-excursion
-                 (forward-char -1)
-                 (looking-at "[ \t]"))))
-      (let ((space-at-point (looking-at "[ \t]")))
-        (unless (and (not (bolp)) (save-excursion
-                                    (forward-char -1)
-                                    (looking-at "[ \t]")))
-          (insert " "))
-        (insert "{-# SCC \"\" #-}")
-        (unless space-at-point
-          (insert " "))
-        (forward-char (if space-at-point -5 -6))
-        t )))
-
-(defun haskell-mode-insert-scc-at-point ()
-  "Insert an SCC annotation at point."
-  (interactive)
-  (if (not (haskell-mode-try-insert-scc-at-point))
-      (error "Not over an area of whitespace")))
-
-(make-obsolete
- 'haskell-mode-insert-scc-at-point
- 'haskell-mode-toggle-scc-at-point
- "2015-11-11")
-
-(defun haskell-mode-try-kill-scc-at-point ()
-  "Try to kill an SCC annotation at point.  Return true if
-successful, nil otherwise."
-  (save-excursion
-    (let ((old-point (point))
-          (scc "\\({-#[ \t]*SCC \"[^\"]*\"[ \t]*#-}\\)[ \t]*"))
-      (while (not (or (looking-at scc) (bolp)))
-        (forward-char -1))
-      (if (and (looking-at scc)
-               (<= (match-beginning 1) old-point)
-               (> (match-end 1) old-point))
-          (progn (kill-region (match-beginning 0) (match-end 0))
-                 t)))))
-
-;; Also Bryan O'Sullivan's.
-(defun haskell-mode-kill-scc-at-point ()
-  "Kill the SCC annotation at point."
-  (interactive)
-  (if (not (haskell-mode-try-kill-scc-at-point))
-      (error "No SCC at point")))
-
-(make-obsolete
- 'haskell-mode-kill-scc-at-point
- 'haskell-mode-toggle-scc-at-point
- "2015-11-11")
-
-(defun haskell-mode-toggle-scc-at-point ()
-  "If point is in an SCC annotation, kill the annotation.  Otherwise, try to insert a new annotation."
-  (interactive)
-  (if (not (haskell-mode-try-kill-scc-at-point))
-      (if (not (haskell-mode-try-insert-scc-at-point))
-          (error "Could not insert or remove SCC"))))
 
 (defun haskell-guess-module-name-from-file-name (file-name)
   "Guess the module name from FILE-NAME.
