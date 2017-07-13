@@ -6,12 +6,12 @@ clone_depth: 1
 init:
 
 install:
-  - ps: Invoke-WebRequest "https://ftp.gnu.org/gnu/emacs/windows/emacs-24.5-bin-i686-mingw32.zip" -OutFile "emacs-24.5-bin-i686-mingw32.zip"
-  - ps: Invoke-WebRequest "https://downloads.haskell.org/~ghc/8.0.2/ghc-8.0.2-i386-unknown-mingw32-win10.tar.xz" -OutFile "ghc-8.0.2-i386-unknown-mingw32-win10.tar.xz"
+  - ps: Invoke-WebRequest "https://ftp.gnu.org/gnu/emacs/windows/emacs-24.5-bin-i686-mingw32.zip" -OutFile "$env:appveyor_build_folder\emacs-24.5-bin-i686-mingw32.zip"
+  - ps: Invoke-WebRequest "https://downloads.haskell.org/~ghc/8.0.2/ghc-8.0.2-i386-unknown-mingw32-win10.tar.xz" -OutFile "$env:appveyor_build_folder\ghc-8.0.2-i386-unknown-mingw32-win10.tar.xz"
   - 7z x emacs-24.5-bin-i686-mingw32.zip
   - 7z x ghc-8.0.2-i386-unknown-mingw32-win10.tar.xz
-  - $env:path = "$env:.\ghc-8.0.2-i386-unknown-mingw32-win10;$env:path"
-  - $env:path = "$env:.\emacs-24.5-bin-i686-mingw32;$env:path"
+  - $env:path = "$env:appveyor_build_folder\ghc-8.0.2-i386-unknown-mingw32-win10;$env:path"
+  - $env:path = "$env:appveyor_build_folder\emacs-24.5-bin-i686-mingw32;$env:path"
 
 build_script:
   - C:\msys64\usr\bin\bash -l -c "cd ${APPVEYOR_BUILD_FOLDER} && make check"
