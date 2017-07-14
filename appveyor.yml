@@ -11,7 +11,7 @@ install:
   - 7z x emacs-24.5-bin-i686-mingw32.zip
   - 7z x ghc-8.0.2-i386-unknown-mingw32-win10.tar.xz
   - ps: $env:path = "$env:appveyor_build_folder\ghc-8.0.2-i386-unknown-mingw32-win10;$env:path"
-  - ps: $env:path = "$env:appveyor_build_folder\emacs-24.5-bin-i686-mingw32\bin;$env:path"
+  - ps: $env:path = "$env:appveyor_build_folder\emacs-24.5-bin-i686-mingw32\bin\emacs.exe;$env:path"
   - ps: emacs --version
 
 build_script:
